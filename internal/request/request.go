@@ -2,13 +2,22 @@ package request
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 )
 
+type state int
+
+const (
+	initialized state = iota
+	done
+)
+
 type Request struct {
 	RequestLine RequestLine
+	State       state
 }
 
 type RequestLine struct {
@@ -17,34 +26,77 @@ type RequestLine struct {
 	Method        string
 }
 
-const clrf = "\r\n"
+const (
+	bufferSize = 8
+	clrf       = "\r\n"
+)
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	raw, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
+	buf := make([]byte, bufferSize, bufferSize)
+	readToIndex := 0
+	request := &Request{
+		State: initialized,
+	}
+	for request.State != done {
+		if readToIndex >= len(buf) {
+			newBuf := make([]byte, len(buf)*2)
+			copy(newBuf, buf)
+			buf = newBuf
+		}
+		n, err := reader.Read(buf[readToIndex:])
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				request.State = done
+				break
+			}
+			return nil, err
+		}
+		readToIndex += n
+		parsed, err := request.parse(buf[:readToIndex])
+		if err != nil {
+			return nil, fmt.Errorf("error parsing: %s", err.Error())
+		}
+		copy(buf, buf[parsed:readToIndex])
+		readToIndex -= parsed
 	}
 
-	idx := bytes.Index(raw, []byte(clrf))
-	if idx == -1 {
-		return nil, fmt.Errorf("could not find CRLF in request-line")
-	}
-	requestLineText := string(raw[:idx])
-
-	requestParts := strings.Split(requestLineText, clrf)
-
-	requestLine, err := parseRequestLine(requestParts[0])
-	if err != nil {
-		return nil, err
-	}
-
-	finalRequest := Request{
-		RequestLine: *requestLine,
-	}
-	return &finalRequest, nil
+	return request, nil
 }
 
-func parseRequestLine(line string) (*RequestLine, error) {
+func parseRequestLine(data []byte) (*RequestLine, int, error) {
+	idx := bytes.Index(data, []byte(clrf))
+	if idx == -1 {
+		return nil, 0, nil
+	}
+	requestLineText := string(data[:idx])
+	requestLine, err := requestLineFromString(requestLineText)
+	if err != nil {
+		return nil, 0, err
+	}
+	return requestLine, idx + 2, nil
+}
+
+func (r *Request) parse(data []byte) (int, error) {
+	switch r.State {
+	case initialized:
+		result, n, err := parseRequestLine(data)
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			return 0, nil
+		}
+		r.RequestLine = *result
+		r.State = done
+		return n, nil
+	case done:
+		return 0, fmt.Errorf("error: trying to read data in a done state")
+	default:
+		return 0, fmt.Errorf("error: unknown state")
+	}
+}
+
+func requestLineFromString(line string) (*RequestLine, error) {
 	lineParts := strings.Split(line, " ")
 	if len(lineParts) != 3 {
 		return nil, fmt.Errorf("incorrect parts length for request-line: %s", line)
