@@ -36,10 +36,6 @@ func main() {
 			fmt.Println(line)
 		}
 
-		for {
-			arst()
-		}
-
 		fmt.Println("Connection to ", connection.RemoteAddr(), "closed")
 	}
 }
