@@ -43,10 +43,15 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		}
 	}
 
-	fieldName = strings.TrimSpace(fieldName)
-	fieldValue := bytes.TrimSpace(lineParts[1])
+	fieldName = strings.ToLower(strings.TrimSpace(fieldName))
+	fieldValue := string(bytes.TrimSpace(lineParts[1]))
 
-	h.Set(fieldName, string(fieldValue))
+	existingValue, ok := h[fieldName]
+	if ok {
+		fieldValue = existingValue + ", " + fieldValue
+	}
+
+	h.Set(fieldName, fieldValue)
 	return idx + 2, false, nil
 }
 
