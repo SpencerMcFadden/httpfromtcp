@@ -2,10 +2,11 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"sync/atomic"
+
+	"httpfromtcp/internal/response"
 )
 
 type serverState int
@@ -45,16 +46,18 @@ func (s *Server) listen() {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil && !s.closed.Load() {
-			log.Fatalf("error accepting connection: %s", err)
+			fmt.Printf("error accepting connection: %v", err)
 		}
 		go s.handle(conn)
 	}
 }
 
 func (s *Server) handle(conn net.Conn) {
-	fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!\r\n")
-	err := conn.Close()
+	defer conn.Close()
+	response.WriteStatusLine(conn, response.OK)
+	defaultHeaders := response.GetDefaultHeaders(0)
+	err := response.WriteHeaders(conn, defaultHeaders)
 	if err != nil {
-		log.Fatalf("error closing connection: %s", err)
+		fmt.Printf("error writing headers: %v", err)
 	}
 }
