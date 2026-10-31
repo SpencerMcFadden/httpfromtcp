@@ -55,6 +55,12 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	return idx + 2, false, nil
 }
 
+func (h Headers) Get(key string) (string, bool) {
+	key = strings.ToLower(key)
+	v, ok := h[key]
+	return v, ok
+}
+
 func (h Headers) Set(key, value string) {
 	key = strings.ToLower(key)
 	h[key] = value
