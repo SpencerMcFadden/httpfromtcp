@@ -1,6 +1,7 @@
 package response
 
 import (
+	"fmt"
 	"io"
 	"strconv"
 
@@ -17,30 +18,22 @@ const (
 
 const clrf = "\r\n"
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+func getStatusLine(statusCode StatusCode) []byte {
+	statusPhrase := ""
 	switch statusCode {
 	case OK:
-		_, err := w.Write([]byte("HTTP/1.1 200 OK" + clrf))
-		if err != nil {
-			return err
-		}
+		statusPhrase = "OK"
 	case BadRequest:
-		_, err := w.Write([]byte("HTTP/1.1 400 Bad Request" + clrf))
-		if err != nil {
-			return err
-		}
+		statusPhrase = "Bad Request"
 	case InternalError:
-		_, err := w.Write([]byte("HTTP/1.1 500 Internal Server Error" + clrf))
-		if err != nil {
-			return err
-		}
-	default:
-		_, err := w.Write([]byte(""))
-		if err != nil {
-			return err
-		}
+		statusPhrase = "Internal Server Error"
 	}
-	return nil
+	return []byte(fmt.Sprintf("HTTP/1.1 %d %s"+clrf, statusCode, statusPhrase))
+}
+
+func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+	_, err := w.Write(getStatusLine(statusCode))
+	return err
 }
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
@@ -59,8 +52,5 @@ func WriteHeaders(w io.Writer, headers headers.Headers) error {
 		}
 	}
 	_, err := w.Write([]byte(clrf))
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
