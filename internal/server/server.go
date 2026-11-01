@@ -1,9 +1,7 @@
 package server
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"net"
 	"sync/atomic"
 
@@ -56,37 +54,15 @@ func (s *Server) listen() {
 
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
+	writer := response.NewWriter(conn)
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		handlerErr := &HandlerError{
-			StatusCode: response.BadRequest,
-			Message:    err.Error(),
-		}
-		handlerErr.Write(conn)
+		writer.WriteStatusLine(response.BadRequest)
+		writer.WriteHeaders(response.GetDefaultHeaders(len(err.Error())))
+		writer.WriteBody([]byte(err.Error()))
 		return
 	}
-	buf := bytes.NewBuffer([]byte{})
-	handlerErr := s.handler(buf, req)
-	if handlerErr != nil {
-		handlerErr.Write(conn)
-		return
-	}
-	b := buf.Bytes()
-	response.WriteStatusLine(conn, response.OK)
-	defaultHeaders := response.GetDefaultHeaders(len(b))
-	response.WriteHeaders(conn, defaultHeaders)
-	conn.Write(b)
+	s.handler(writer, req)
 }
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
-
-type HandlerError struct {
-	StatusCode response.StatusCode
-	Message    string
-}
-
-func (he *HandlerError) Write(w io.Writer) {
-	response.WriteStatusLine(w, he.StatusCode)
-	response.WriteHeaders(w, response.GetDefaultHeaders(len(he.Message)))
-	w.Write([]byte(he.Message))
-}
+type Handler func(w *response.Writer, req *request.Request)

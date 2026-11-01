@@ -8,7 +8,22 @@ import (
 	"httpfromtcp/internal/headers"
 )
 
-type StatusCode int
+type (
+	StatusCode  int
+	writerState int
+)
+
+type Writer struct {
+	Input       io.Writer
+	writerState writerState
+}
+
+const (
+	WritingStatusLine writerState = iota
+	WritingHeaders
+	WritingBody
+	WritingDone
+)
 
 const (
 	OK            StatusCode = 200
@@ -17,6 +32,12 @@ const (
 )
 
 const clrf = "\r\n"
+
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{
+		Input: w,
+	}
+}
 
 func getStatusLine(statusCode StatusCode) []byte {
 	statusPhrase := ""
@@ -31,9 +52,16 @@ func getStatusLine(statusCode StatusCode) []byte {
 	return []byte(fmt.Sprintf("HTTP/1.1 %d %s"+clrf, statusCode, statusPhrase))
 }
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
-	_, err := w.Write(getStatusLine(statusCode))
-	return err
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+	if w.writerState != WritingStatusLine {
+		return fmt.Errorf("writing state: %d\nexpected: %d", w.writerState, WritingStatusLine)
+	}
+	_, err := w.Input.Write(getStatusLine(statusCode))
+	if err != nil {
+		return err
+	}
+	w.writerState = WritingHeaders
+	return nil
 }
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
@@ -44,13 +72,32 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	return headers
 }
 
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+	if w.writerState != WritingHeaders {
+		return fmt.Errorf("writing state: %d\nexpected: %d", w.writerState, WritingHeaders)
+	}
 	for key, value := range headers {
-		_, err := w.Write([]byte(key + ": " + value + clrf))
+		_, err := w.Input.Write([]byte(key + ": " + value + clrf))
 		if err != nil {
 			return err
 		}
 	}
-	_, err := w.Write([]byte(clrf))
-	return err
+	_, err := w.Input.Write([]byte(clrf))
+	if err != nil {
+		return err
+	}
+	w.writerState = WritingBody
+	return nil
+}
+
+func (w *Writer) WriteBody(p []byte) (int, error) {
+	if w.writerState != WritingBody {
+		return 0, fmt.Errorf("writing state: %d\nexpected: %d", w.writerState, WritingBody)
+	}
+	numBytes, err := w.Input.Write(p)
+	if err != nil {
+		return 0, err
+	}
+	w.writerState = WritingDone
+	return numBytes, nil
 }
