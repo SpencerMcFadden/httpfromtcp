@@ -1,9 +1,12 @@
 package main
 
 import (
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"httpfromtcp/internal/request"
@@ -28,6 +31,10 @@ func main() {
 }
 
 func handler(w *response.Writer, req *request.Request) {
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
+		handlerProxy(w, req)
+		return
+	}
 	switch req.RequestLine.RequestTarget {
 	case "/yourproblem":
 		handler400(w, req)
@@ -38,6 +45,46 @@ func handler(w *response.Writer, req *request.Request) {
 	default:
 		handler200(w, req)
 		return
+	}
+}
+
+func handlerProxy(w *response.Writer, req *request.Request) {
+	target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+	baseURL := "https://httpbingo.org/"
+	res, err := http.Get(baseURL + target)
+	if err != nil {
+		handler500(w, req)
+		return
+	}
+	defer res.Body.Close()
+
+	w.WriteStatusLine(response.OK)
+	defaultHeaders := response.GetDefaultHeaders(0)
+	defaultHeaders.Delete("Content-Length")
+	defaultHeaders.Set("Transfer-Encoding", "chunked")
+	w.WriteHeaders(defaultHeaders)
+
+	buf := make([]byte, 1024)
+	for {
+		n, err := res.Body.Read(buf)
+		if n > 0 {
+			_, err = w.WriteChunkedBody(buf[:n])
+			if err != nil {
+				log.Println("error writing chunked body:", err)
+				break
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Println("error reading response:", err)
+			break
+		}
+	}
+	_, err = w.WriteChunkedBodyDone()
+	if err != nil {
+		log.Println("error writing chunked body done:", err)
 	}
 }
 

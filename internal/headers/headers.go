@@ -72,6 +72,11 @@ func (h Headers) Override(key, value string) {
 	h[key] = value
 }
 
+func (h Headers) Delete(key string) {
+	key = strings.ToLower(key)
+	delete(h, key)
+}
+
 func isValidChar(c byte) bool {
 	if c >= 'A' && c <= 'Z' ||
 		c >= 'a' && c <= 'z' ||

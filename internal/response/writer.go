@@ -66,3 +66,24 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 	defer func() { w.writerState = WritingDone }()
 	return w.Input.Write(p)
 }
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.writerState != WritingBody {
+		return 0, fmt.Errorf("writing state: %d\nexpected: %d", w.writerState, WritingBody)
+	}
+
+	hexLength := fmt.Sprintf("%x"+clrf, len(p))
+	toWrite := []byte(hexLength)
+	p = append(p, []byte(clrf)...)
+	toWrite = append(toWrite, p...)
+	return w.Input.Write(toWrite)
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	if w.writerState != WritingBody {
+		return 0, fmt.Errorf("writing state: %d\nexpected: %d", w.writerState, WritingBody)
+	}
+
+	defer func() { w.writerState = WritingDone }()
+	return w.Input.Write([]byte("0" + clrf + clrf))
+}
