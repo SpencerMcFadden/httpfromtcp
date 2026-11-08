@@ -20,6 +20,7 @@ const (
 	WritingStatusLine writerState = iota
 	WritingHeaders
 	WritingBody
+	WritingTrailers
 	WritingDone
 )
 
@@ -63,7 +64,7 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 		return 0, fmt.Errorf("writing state: %d\nexpected: %d", w.writerState, WritingBody)
 	}
 
-	defer func() { w.writerState = WritingDone }()
+	defer func() { w.writerState = WritingTrailers }()
 	return w.Input.Write(p)
 }
 
@@ -84,6 +85,22 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 		return 0, fmt.Errorf("writing state: %d\nexpected: %d", w.writerState, WritingBody)
 	}
 
+	defer func() { w.writerState = WritingTrailers }()
+	return w.Input.Write([]byte("0" + clrf))
+}
+
+func (w *Writer) WriteTrailers(headers headers.Headers) error {
+	if w.writerState != WritingTrailers {
+		return fmt.Errorf("writing state: %d\nexpected: %d", w.writerState, WritingTrailers)
+	}
+
 	defer func() { w.writerState = WritingDone }()
-	return w.Input.Write([]byte("0" + clrf + clrf))
+	for key, value := range headers {
+		_, err := w.Input.Write([]byte(key + ": " + value + clrf))
+		if err != nil {
+			return err
+		}
+	}
+	_, err := w.Input.Write([]byte(clrf))
+	return err
 }
